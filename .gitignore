@@ -1,0 +1,15 @@
+# Whitelist Mode
+/*
+
+# Git Files
+!.gitignore
+
+# GitHub Files
+!README.md
+!LICENSE
+
+# Cargo Files
+!Cargo.toml
+
+# Rust Source
+!src/
