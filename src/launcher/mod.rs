@@ -17,7 +17,6 @@ pub struct GameOption(String, Option<String>);
 
 #[derive(Default)]
 pub struct MinecraftLauncherBuilder {
-    version_id: Option<String>,
     program_path: Option<String>,
     game_root_dir: Option<path::PathBuf>,
     assets_dir: Option<path::PathBuf>,
@@ -28,7 +27,6 @@ pub struct MinecraftLauncherBuilder {
 }
 
 pub struct MinecraftLauncher {
-    version_id: String,
     program_path: String,
     game_root_dir: path::PathBuf,
     assets_dir: path::PathBuf,
@@ -54,9 +52,8 @@ pub fn builder() -> MinecraftLauncherBuilder {
 }
 
 pub fn create(game_dir: path::PathBuf,
-              game_version_id: &str,
               game_auth_info: yggdrasil::AuthInfo) -> MinecraftLauncher {
-    builder().root_dir(game_dir.as_path()).id(game_version_id).auth(game_auth_info).build()
+    builder().root_dir(game_dir.as_path()).auth(game_auth_info).build()
 }
 
 #[cfg(target_os = "windows")]
@@ -87,11 +84,6 @@ pub fn find_jre() -> Vec<String> {
 }
 
 impl MinecraftLauncherBuilder {
-    pub fn id(mut self, id: &str) -> Self {
-        self.version_id = Some(id.to_owned());
-        self
-    }
-
     pub fn root_dir(mut self, dir: &path::Path) -> Self {
         self.game_root_dir = Some(dir.to_path_buf());
         self
@@ -130,7 +122,6 @@ impl MinecraftLauncherBuilder {
     pub fn build(self) -> MinecraftLauncher {
         let root_dir = self.game_root_dir.expect("game root dir not specified");
         MinecraftLauncher {
-            version_id: self.version_id.expect("version id not specified"),
             program_path: self.program_path.unwrap_or_else(|| find_jre().pop().expect("jre not found")),
             assets_dir: self.assets_dir.unwrap_or_else(|| root_dir.as_path().join("assets/")),
             libraries_dir: self.libraries_dir.unwrap_or_else(|| root_dir.as_path().join("libraries/")),
@@ -167,7 +158,7 @@ impl MinecraftLauncher {
         map.insert("profile_name".to_owned(),
                    name.clone());
         map.insert("version_name".to_owned(),
-                   self.version_id.clone());
+                   version.id().to_owned());
         map.insert("game_directory".to_owned(),
                    self.game_root_dir.to_str().unwrap_or("").to_owned());
         map.insert("assets_root".to_owned(),
@@ -187,7 +178,7 @@ impl MinecraftLauncher {
         map.insert("launcher_version".to_owned(),
                    self.launcher_name_version.1.clone());
         map.insert("natives_directory".to_owned(),
-                   self.manager.get_natives_path(&self.version_id).to_str().unwrap_or("").to_owned());
+                   self.manager.get_natives_path(version.id()).to_str().unwrap_or("").to_owned());
         map.insert("primary_jar".to_owned(),
                    version.version_jar_path(&self.manager).ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_else(String::new));
         map.insert("classpath".to_owned(),
@@ -197,9 +188,9 @@ impl MinecraftLauncher {
         map
     }
 
-    pub fn to_launch_arguments(&self) -> Result<LaunchArguments, versions::Error> {
+    pub fn to_arguments(&self, version_id: &str) -> Result<LaunchArguments, versions::Error> {
         let java_program_path = self.program_path.clone();
-        let minecraft_version = self.manager.version_of(&self.version_id)?;
+        let minecraft_version = self.manager.version_of(version_id)?;
         let java_main_class = minecraft_version.main_class(&self.manager).unwrap_or_else(String::new);
         let game_natives = minecraft_version.to_native_collection(&self.manager, self.libraries_dir.as_path())?;
         let mut jvm_options = vec![
