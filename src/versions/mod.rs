@@ -171,11 +171,8 @@ impl VersionManager {
         VersionManager(Box::from(path))
     }
 
-    pub fn get_primary_jar_path(&self, id: &str) -> PathBuf {
-        let sub_path = format!("{}.jar", id);
-        let mut path_buf = self.0.join(id);
-        path_buf.push(sub_path);
-        path_buf
+    pub fn get_version_path(&self) -> PathBuf {
+        self.0.to_path_buf()
     }
 
     pub fn get_natives_path(&self, id: &str) -> PathBuf {
@@ -250,13 +247,17 @@ impl MinecraftVersion {
         }
     }
 
-    pub fn version_jar(&self, manager: &VersionManager) -> Result<String, Error> {
+    pub fn version_jar_path(&self, manager: &VersionManager) -> Result<PathBuf, Error> {
         match self.version_jar {
-            Some(ref jar) => Result::Ok(jar.to_owned()),
+            Some(ref jar) => {
+                let version_path = manager.get_version_path();
+                Result::Ok(version_path.join(format!("{0}/{0}.jar", jar)))
+            },
             None => if let Some(ref inherits_from) = self.inherits_from {
-                manager.version_of(&inherits_from)?.version_jar(manager)
+                manager.version_of(&inherits_from)?.version_jar_path(manager)
             } else {
-                Result::Ok(self.id.to_owned())
+                let version_path = manager.get_version_path();
+                Result::Ok(version_path.join(format!("{0}/{0}.jar", self.id)))
             }
         }
     }
@@ -305,8 +306,8 @@ impl MinecraftVersion {
                                  s: &parsing::ParameterStrategy) -> Result<(), Error> {
         if OS_PLATFORM == "windows" { parameters.push(launcher::JvmOption::new("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump".to_owned())); }
         parameters.push(launcher::JvmOption::new(self.parse_token("-Djava.library.path=${natives_directory}", s)));
-        parameters.push(launcher::JvmOption::new(self.parse_token("-Dminecraft.arguments.brand=${arguments_name}", s)));
-        parameters.push(launcher::JvmOption::new(self.parse_token("-Dminecraft.arguments.version=${arguments_version}", s)));
+        parameters.push(launcher::JvmOption::new(self.parse_token("-Dminecraft.launcher.brand=${launcher_name}", s)));
+        parameters.push(launcher::JvmOption::new(self.parse_token("-Dminecraft.launcher.version=${launcher_version}", s)));
         parameters.push(launcher::JvmOption::new(self.parse_token("-Dminecraft.client.jar=${primary_jar}", s)));
         parameters.push(launcher::JvmOption::new("-cp".to_owned()));
         parameters.push(launcher::JvmOption::new(self.parse_token("${classpath}", s)));
@@ -334,7 +335,7 @@ impl MinecraftVersion {
                 }
             }
         }
-        let primary_jar_path = manager.get_primary_jar_path(self.id.as_str()).into_os_string();
+        let primary_jar_path = self.version_jar_path(manager)?.into_os_string();
         result.push_str(primary_jar_path.into_string()?.as_str());
         Result::Ok(result)
     }

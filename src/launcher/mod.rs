@@ -15,6 +15,18 @@ pub struct JvmOption(String);
 #[derive(Debug)]
 pub struct GameOption(String, Option<String>);
 
+#[derive(Default)]
+pub struct MinecraftLauncherBuilder {
+    version_id: Option<String>,
+    program_path: Option<String>,
+    game_root_dir: Option<path::PathBuf>,
+    assets_dir: Option<path::PathBuf>,
+    libraries_dir: Option<path::PathBuf>,
+    launcher_name_version: Option<(String, String)>,
+    auth_info: Option<yggdrasil::AuthInfo>,
+    window_resolution: Option<(u32, u32)>,
+}
+
 pub struct MinecraftLauncher {
     version_id: String,
     program_path: String,
@@ -37,20 +49,14 @@ pub struct LaunchArguments {
     game_natives: versions::NativeCollection,
 }
 
+pub fn builder() -> MinecraftLauncherBuilder {
+    Default::default()
+}
+
 pub fn create(game_dir: path::PathBuf,
               game_version_id: &str,
               game_auth_info: yggdrasil::AuthInfo) -> MinecraftLauncher {
-    MinecraftLauncher {
-        version_id: game_version_id.to_owned(),
-        program_path: find_jre().pop().expect("Java Runtime Environment not found"),
-        assets_dir: game_dir.as_path().join("assets/"),
-        libraries_dir: game_dir.as_path().join("libraries/"),
-        manager: versions::VersionManager::new(game_dir.as_path().join("versions/").as_path()),
-        game_root_dir: game_dir,
-        launcher_name_version: ("RMCLL".to_owned(), "0.1.0".to_owned()),
-        auth_info: game_auth_info,
-        window_resolution: (854, 480),
-    }
+    builder().root_dir(game_dir.as_path()).id(game_version_id).auth(game_auth_info).build()
 }
 
 #[cfg(target_os = "windows")]
@@ -78,6 +84,63 @@ pub fn find_jre() -> Vec<String> {
         }
     }
     Vec::new()
+}
+
+impl MinecraftLauncherBuilder {
+    pub fn id(mut self, id: &str) -> Self {
+        self.version_id = Some(id.to_owned());
+        self
+    }
+
+    pub fn root_dir(mut self, dir: &path::Path) -> Self {
+        self.game_root_dir = Some(dir.to_path_buf());
+        self
+    }
+
+    pub fn assets_dir(mut self, dir: &path::Path) -> Self {
+        self.assets_dir = Some(dir.to_path_buf());
+        self
+    }
+
+    pub fn libraries_dir(mut self, dir: &path::Path) -> Self {
+        self.libraries_dir = Some(dir.to_path_buf());
+        self
+    }
+
+    pub fn jre(mut self, path: &path::Path) -> Self {
+        self.program_path = path.to_path_buf().into_os_string().into_string().ok();
+        self
+    }
+
+    pub fn auth(mut self, auth: yggdrasil::AuthInfo) -> Self {
+        self.auth_info = Some(auth);
+        self
+    }
+
+    pub fn launcher(mut self, name: &str, version: &str) -> Self {
+        self.launcher_name_version = Some((name.to_owned(), version.to_owned()));
+        self
+    }
+
+    pub fn resolution(mut self, width: u32, height: u32) -> Self {
+        self.window_resolution = Some((width, height));
+        self
+    }
+
+    pub fn build(self) -> MinecraftLauncher {
+        let root_dir = self.game_root_dir.expect("game root dir not specified");
+        MinecraftLauncher {
+            version_id: self.version_id.expect("version id not specified"),
+            program_path: self.program_path.unwrap_or_else(|| find_jre().pop().expect("jre not found")),
+            assets_dir: self.assets_dir.unwrap_or_else(|| root_dir.as_path().join("assets/")),
+            libraries_dir: self.libraries_dir.unwrap_or_else(|| root_dir.as_path().join("libraries/")),
+            manager: versions::VersionManager::new(root_dir.as_path().join("versions/").as_path()),
+            game_root_dir: root_dir,
+            launcher_name_version: self.launcher_name_version.unwrap_or(("RMCLL".to_owned(), "0.1.0".to_owned())),
+            auth_info: self.auth_info.expect("auth info not specified"),
+            window_resolution: self.window_resolution.unwrap_or((854, 480)),
+        }
+    }
 }
 
 impl MinecraftLauncher {
@@ -126,7 +189,7 @@ impl MinecraftLauncher {
         map.insert("natives_directory".to_owned(),
                    self.manager.get_natives_path(&self.version_id).to_str().unwrap_or("").to_owned());
         map.insert("primary_jar".to_owned(),
-                   self.manager.get_primary_jar_path(&self.version_id).to_str().unwrap_or("").to_owned());
+                   version.version_jar_path(&self.manager).ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_else(String::new));
         map.insert("classpath".to_owned(),
                    version.classpath(self.libraries_dir.as_path(), &self.manager).unwrap_or_else(|_| String::new()));
         map.insert("classpath_separator".to_owned(),
