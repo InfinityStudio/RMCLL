@@ -23,6 +23,8 @@ pub struct MinecraftLauncherBuilder {
     libraries_dir: Option<path::PathBuf>,
     launcher_name_version: Option<(String, String)>,
     auth_info: Option<yggdrasil::AuthInfo>,
+    min_memory_mib: Option<f32>,
+    max_memory_mib: Option<f32>,
     window_resolution: Option<(u32, u32)>,
 }
 
@@ -34,6 +36,7 @@ pub struct MinecraftLauncher {
     manager: versions::VersionManager,
     launcher_name_version: (String, String),
     auth_info: yggdrasil::AuthInfo,
+    min_max_memory_mib: (f32, f32),
     window_resolution: (u32, u32),
 }
 
@@ -114,6 +117,16 @@ impl MinecraftLauncherBuilder {
         self
     }
 
+    pub fn min_memory(mut self, memory_mib: f32) -> Self {
+        self.min_memory_mib = Some(memory_mib);
+        self
+    }
+
+    pub fn max_memory(mut self, memory_mib: f32) -> Self {
+        self.max_memory_mib = Some(memory_mib);
+        self
+    }
+
     pub fn resolution(mut self, width: u32, height: u32) -> Self {
         self.window_resolution = Some((width, height));
         self
@@ -129,6 +142,7 @@ impl MinecraftLauncherBuilder {
             game_root_dir: root_dir,
             launcher_name_version: self.launcher_name_version.unwrap_or(("RMCLL".to_owned(), "0.1.0".to_owned())),
             auth_info: self.auth_info.expect("auth info not specified"),
+            min_max_memory_mib: (self.min_memory_mib.unwrap_or(128f32), self.max_memory_mib.unwrap_or(0f32)),
             window_resolution: self.window_resolution.unwrap_or((854, 480)),
         }
     }
@@ -194,14 +208,15 @@ impl MinecraftLauncher {
         let java_main_class = minecraft_version.main_class(&self.manager).unwrap_or_else(String::new);
         let game_natives = minecraft_version.to_native_collection(&self.manager, self.libraries_dir.as_path())?;
         let mut jvm_options = vec![
-            JvmOption::new("-Xmn128m".to_owned()),
-            JvmOption::new("-Xmx2048m".to_owned()),
             JvmOption::new("-XX:+UseG1GC".to_owned()),
             JvmOption::new("-XX:-UseAdaptiveSizePolicy".to_owned()),
             JvmOption::new("-XX:-OmitStackTraceInFastThrow".to_owned()),
             JvmOption::new("-Dfml.ignoreInvalidMinecraftCertificates=true".to_owned()),
             JvmOption::new("-Dfml.ignorePatchDiscrepancies=true".to_owned()),
         ];
+        let (min_mib, max_mib) = self.min_max_memory_mib;
+        if min_mib > 0f32 { jvm_options.push(JvmOption::new(format!("-Xmn{}m", min_mib))) }
+        if max_mib > 0f32 { jvm_options.push(JvmOption::new(format!("-Xmx{}m", max_mib))) }
         let mut game_options = Vec::new();
         let map = self.generate_argument_map(&minecraft_version);
         let game_native_path = path::PathBuf::from(map.get("natives_directory").unwrap());

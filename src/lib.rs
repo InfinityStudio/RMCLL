@@ -26,8 +26,11 @@ mod tests {
         let game_dir = env::home_dir().unwrap().join(".minecraft/");
         let game_auth_info = yggdrasil::offline("zzzz").auth().unwrap();
         let launcher = launcher::create(game_dir, game_auth_info);
-        let process = launcher.to_arguments("1.10.2").unwrap().start().unwrap();
-        let exit_code = process.wait_with_output().unwrap().status.code().unwrap();
+        let args = launcher.to_arguments("1.12.2").unwrap();
+        println!("\nStarting minecraft with: {} {:?}", args.program(), args.args());
+        let minecraft_process = args.start().unwrap();
+        let output = minecraft_process.wait_with_output().unwrap();
+        let exit_code = output.status.code().unwrap();
         println!("\nMinecraft client finished with exit code {}", exit_code);
     }
 }
